@@ -25,7 +25,7 @@ public class BatchSearch {
     public static final String indexPath = "index";
     public static final String queryPath = "PsgRobust/robust04.titles.tsv";
     public static final String queryJudgement = "PsgRobust/robust04.qrels";
-    public static final String wordvecPath = "/Users/brandonmouser/Downloads/GoogleNews-vectors-negative300.bin";
+    public static final String wordvecPath = "GoogleNews-vectors-negative300.bin";
     public static final String queryWordVectorPath = "QUERY_WORDS.txt";
     public static final String dHatVectorPath = "D_HAT.txt";
 

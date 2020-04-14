@@ -157,20 +157,23 @@ public class MixtureFeedbackModel implements ExpansionModel{
                 int length = doclength.get(sd);
                 g.score += ((float)top / (float)bottom) * (((float)termCounts.get(sd) / (float)length));
                 termCount += termCounts.get(sd);
+                //g.score += scores.get(sd) * termCounts.get(sd) / length;
             }
-            totalCount += 1;
-//            g.score = termCount * (0.5 * (g.score/(g.score + termCorpus)));
-//            totalCount += g.score;
+            // 1 / fbDocs from the RelevanceModel source code
+            //g.score *= (1.0 / scores.size());
             grams.add(g);
         }
 
-        for (WeightedTerm g : grams) {
-            g.score = g.score / totalCount;
-            newGrams.add(g);
+        return grams;
         }
 
-        return newGrams;
-    }
+//        for (WeightedTerm g : grams) {
+//            g.score = g.score / totalCount;
+//            newGrams.add(g);
+//        }
+//
+//        return newGrams;
+//    }
 
 
     public List <WeightedTerm> computeWeights (FeedbackData feedbackData, Parameters fbParam, Parameters queryParameters, Set <String> queryTerms) throws Exception{
@@ -179,19 +182,22 @@ public class MixtureFeedbackModel implements ExpansionModel{
 
         Map<String, Double> corpusTermCount = new HashMap<String, Double>();
         Map<ScoredDocument, Integer> doclength = new HashMap<ScoredDocument, Integer>();
-        Document.DocumentComponents corpusParams = new Document.DocumentComponents(true, false, true);
+        Document.DocumentComponents corpusParams = new Document.DocumentComponents(false, false, true);
 
-        for(String query : feedbackData.termCounts.keySet()){
-            Node node = StructuredQuery.parse(query);
-            node.getNodeParameters().set("queryType", "count");
-            node = feedbackData.retrieval.transformQuery(node, Parameters.create());
-            double thing = (double)feedbackData.retrieval.getNodeStatistics(node).nodeFrequency/documentCount;
-            corpusTermCount.put(query, thing);
-        }
+//        for(String query : feedbackData.termCounts.keySet()){
+//            Node node = StructuredQuery.parse(query);
+//            node.getNodeParameters().set("queryType", "count");
+//            node = feedbackData.retrieval.transformQuery(node, Parameters.create());
+//            double thing = (double)feedbackData.retrieval.getNodeStatistics(node).nodeFrequency/documentCount;
+//            corpusTermCount.put(query, thing);
+//        }
 
         for(ScoredDocument sd : feedbackData.initialResults){
             Document doc = retrieval.getDocument(sd.documentName, corpusParams);
             doclength.put(sd, doc.terms.size());
+            for(String query : feedbackData.termCounts.keySet()) {
+                //corpusTermCount.put(query, thing);
+            }
         }
 
         // compute term weights
