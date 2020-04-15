@@ -19,19 +19,24 @@ import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectorsImpl;
 import org.deeplearning4j.models.word2vec.Word2Vec;
+import org.lemurproject.galago.core.eval.Eval;
+import org.lemurproject.galago.core.eval.QuerySetJudgments;
 import org.lemurproject.galago.core.index.disk.DiskIndex;
 import org.lemurproject.galago.core.index.stats.FieldStatistics;
 import org.lemurproject.galago.core.parse.Document;
 import org.lemurproject.galago.core.parse.stem.KrovetzStemmer;
 import org.lemurproject.galago.core.retrieval.Retrieval;
 import org.lemurproject.galago.core.retrieval.RetrievalFactory;
+import org.lemurproject.galago.core.tools.apps.BatchSearch;
 import org.lemurproject.galago.utility.MathUtils;
 import org.lemurproject.galago.utility.Parameters;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.javatuples.Pair;
 
 import java.io.*;
 import java.lang.reflect.Parameter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
@@ -45,6 +50,7 @@ public class Main {
     public static final String wordvecPath = "GoogleNews-vectors-negative300.bin";
     public static final String queryWordVectorPath = "QUERY_WORDS.txt";
     public static final String dHatVectorPath = "D_HAT.txt";
+    public static final String resultsPath = "batchResults";
     public static final int requested = 1000;
 
     public static List<Parameters> readParameters(boolean rm){
@@ -151,9 +157,55 @@ public class Main {
         out.close();
     }
 
+    public static Parameters setParams(List<Pair> paramTuplesStr,
+                                       List<Pair> paramTuplesBool,
+                                       List<Pair> paramTuplesInt) {
+
+        Parameters params = Parameters.create();
+        for (Pair p : paramTuplesStr) {
+            params.set(((String) p.getValue0()), ((String) p.getValue1()));
+        }
+        for (Pair p : paramTuplesBool) {
+            params.set(((String) p.getValue0()), ((Boolean) p.getValue1()));
+        }
+        for (Pair p : paramTuplesInt) {
+            params.set(((String) p.getValue0()), ((Integer) p.getValue1()));
+        }
+        return params;
+    }
+
     public static void main(String[] args) throws Exception {
         //write_d_hat();
         //write_q();
+
+        // bm25, Krovetz stemming, Dirchlet smoothing (mu=1000) ---------------------
+        Parameters queryParams = setParams(new ArrayList<>(Arrays.asList(Pair.with("queryFormat", "tsv"),
+                                                                             Pair.with("query", queryPath),
+                                                                             Pair.with("defaultTextPart", "postings.krovetz"),
+                                                                             Pair.with("index", indexPath),
+                                                                             Pair.with("scorer", "bm25"))),
+                                           new ArrayList<>(),
+                                           new ArrayList<>(Arrays.asList(Pair.with("requested", 1000),
+                                                                         Pair.with("mu", 1000))));
+        BatchSearch bs = new BatchSearch();
+        bs.run(queryParams, new PrintStream(resultsPath));
+
+        // generate word-embedding scores
+        // linearly combine
+        // sort
+        // eval
+
+        Parameters evalParams = setParams(new ArrayList<>(Arrays.asList(Pair.with("metrics", "map"),
+                                                                            Pair.with("judgments", queryJudgement),
+                                                                            Pair.with("baseline", resultsPath))),
+                                          new ArrayList<>(Arrays.asList(Pair.with("details", true))),
+                                          new ArrayList<>());
+
+        QuerySetJudgments qsj = new QuerySetJudgments(queryJudgement);
+        Parameters resultParams = Eval.singleEvaluation(evalParams, qsj, new ArrayList<>());
+
+        Double map_krovDirich = ((Double) (resultParams.getMap("all").get("map")));
+        System.out.println("MAP w/ krovetz stemming and Dirichlet smoothing: " + map_krovDirich.toString());
     }
 
 }
