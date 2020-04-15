@@ -26,12 +26,15 @@ public class WordEmbeddedScorer {
     private List<String> queries = new ArrayList<>();
     private HashMap<String, List<String>> documents = new HashMap<>();
 
-    public WordEmbeddedScorer(Word2Vec dV, Word2Vec qV, HashMap<String, List<String>> documentNames) throws UnsupportedEncodingException, FileNotFoundException {
+    public WordEmbeddedScorer(Word2Vec dV, Word2Vec qV, HashMap<String, HashMap<String, Double>> queryDocumentNames) throws UnsupportedEncodingException, FileNotFoundException {
         if(documentVector == null){
             documentVector = dV;
             queryVector = qV;
         }
-        documents = documentNames;
+        for(String queryID : queryDocumentNames.keySet()){
+            List<String> documentNames = new ArrayList<>(queryDocumentNames.get(queryID).keySet());
+            documents.put(queryID, documentNames);
+        }
         readParameters();
         computeDocumentQueryScores();
     }
@@ -76,7 +79,7 @@ public class WordEmbeddedScorer {
                 documentScores.put(document, score);
             }
             resultWriter.write(queryNumber, sortByValue(documentScores));
-            //queryDocumentPair.put(queryNumber, sortByValue(documentScores));
+            queryDocumentPair.put(queryNumber, sortByValue(documentScores));
             System.out.print(String.format("\r Processed all Documents for Query %s/%2d", i, queries.size()));
         }
         resultWriter.close();

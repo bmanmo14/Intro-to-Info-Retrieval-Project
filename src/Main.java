@@ -197,11 +197,14 @@ public class Main {
                                            new ArrayList<>(Arrays.asList(Pair.with("requested", 1000),
                                                                          Pair.with("mu", 1000))));
         BatchSearch bs = new BatchSearch();
-        bs.retrieve(resultsPath, queryParams, "bm25");
+        HashMap<String, HashMap<String, Double>> documentResults = bs.retrieve(resultsPath, queryParams, "bm25");
 
         Word2Vec queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
         Word2Vec documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
-        WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(documentWordVectors, queryWordVectors, new HashMap<String, List<String>>());
+        WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(documentWordVectors, queryWordVectors, documentResults);
+
+        HashMap<String, HashMap<String, Double>> wordEmbeddingResults = wordEmbeddedScorer.getFinalResults();
+
         // generate word-embedding scores
         // linearly combine
         // sort

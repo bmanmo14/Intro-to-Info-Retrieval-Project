@@ -11,6 +11,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.PrintStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 import static org.lemurproject.galago.core.tools.apps.BatchSearch.logger;
@@ -59,7 +60,7 @@ public class BatchSearch {
         return queries;
     }
 
-    public void retrieve(String outputFileName, Parameters queryParams, String type) throws Exception {
+    public HashMap<String, HashMap<String, Double>> retrieve(String outputFileName, Parameters queryParams, String type) throws Exception {
         int requested = 1000; // number of documents to retrieve
         boolean append = false;
 
@@ -71,6 +72,7 @@ public class BatchSearch {
         // open output file
         ResultWriter resultWriter = new ResultWriter(outputFileName, append);
 
+        HashMap<String, HashMap<String, Double>> resultDocuments = new HashMap<>();
         // for each query, run it, get the results, print in TREC format
         for (Parameters query : queries) {
             String queryNumber = query.getString("number");
@@ -88,7 +90,10 @@ public class BatchSearch {
             List<ScoredDocument> results = retrieval.executeQuery(transformed, query).scoredDocuments;
             
             // print results
-            resultWriter.write(queryNumber, results);
+
+            resultDocuments.put(queryNumber, resultWriter.write(queryNumber, results));
         }
+
+        return resultDocuments;
     }
 }

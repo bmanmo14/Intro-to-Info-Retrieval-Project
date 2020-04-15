@@ -1,10 +1,7 @@
 import org.lemurproject.galago.core.retrieval.ScoredDocument;
 
 import java.io.*;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 
 public class ResultWriter {
@@ -31,7 +28,8 @@ public class ResultWriter {
         }
     }
     
-    public void write (String queryNumber, List<ScoredDocument> results, boolean trecFormat) {
+    public HashMap<String, Double> write (String queryNumber, List<ScoredDocument> results, boolean trecFormat) {
+        HashMap<String, Double> documentNames = new HashMap<>();
         if (!results.isEmpty()) {
             for (ScoredDocument sd : results) {
                 if (trecFormat) {
@@ -39,12 +37,14 @@ public class ResultWriter {
                 } else {
                     out.println(sd.toString(queryNumber));
                 }
+                documentNames.put(sd.documentName, sd.score);
             }
         }
+        return documentNames;
     }
     
-    public void write (String queryNumber, List<ScoredDocument> results) {
-        write(queryNumber, results, true);
+    public HashMap<String, Double> write (String queryNumber, List<ScoredDocument> results) {
+        return write(queryNumber, results, true);
     }
     
     public void close (){
