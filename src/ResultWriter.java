@@ -1,7 +1,10 @@
 import org.lemurproject.galago.core.retrieval.ScoredDocument;
 
 import java.io.*;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Set;
 
 
 public class ResultWriter {
@@ -13,6 +16,19 @@ public class ResultWriter {
     
     public ResultWriter (){
         out = System.out;
+    }
+
+    public void write (String queryNumber, HashMap<String, Double> results) {
+        Set<String> document = results.keySet();
+        int counter = 1;
+        if (!results.isEmpty()) {
+            for (String doc : document) {
+                if(!Double.isNaN(results.get(doc))) {
+                    out.println(String.format("%s Q0 %s %2d %6f galago", queryNumber, doc, counter, (double)results.get(doc)));
+                    counter += 1;
+                }
+            }
+        }
     }
     
     public void write (String queryNumber, List<ScoredDocument> results, boolean trecFormat) {

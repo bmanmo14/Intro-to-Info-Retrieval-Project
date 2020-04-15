@@ -27,7 +27,6 @@ import org.lemurproject.galago.core.parse.Document;
 import org.lemurproject.galago.core.parse.stem.KrovetzStemmer;
 import org.lemurproject.galago.core.retrieval.Retrieval;
 import org.lemurproject.galago.core.retrieval.RetrievalFactory;
-import org.lemurproject.galago.core.tools.apps.BatchSearch;
 import org.lemurproject.galago.utility.MathUtils;
 import org.lemurproject.galago.utility.Parameters;
 import org.nd4j.linalg.api.ndarray.INDArray;
@@ -35,10 +34,7 @@ import org.javatuples.Pair;
 
 import java.io.*;
 import java.lang.reflect.Parameter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 
 /**
  * @author raver119@gmail.com
@@ -46,7 +42,7 @@ import java.util.List;
 public class Main {
     public static final String indexPath = "index";
     public static final String queryPath = "PsgRobust/robust04.titles.tsv";
-    public static final String queryJudgement = "PsgRobust/robust04.qrels";
+    public static final String queryJudgement = "PsgRobust/PsgRobust.qrels";
     public static final String wordvecPath = "GoogleNews-vectors-negative300.bin";
     public static final String queryWordVectorPath = "QUERY_WORDS.txt";
     public static final String dHatVectorPath = "D_HAT.txt";
@@ -174,6 +170,19 @@ public class Main {
         return params;
     }
 
+    public static List<String> getAllDocumentNames() throws Exception {
+        List<String> documentNames = new ArrayList<String>();
+        Retrieval ret = createRet("KrovetzStemmer", KrovetzStemmer.class.getName(), "postings.krovetz",
+                "dirichlet", "org.lemurproject.galago.core.retrieval.prf.RelevanceModel3", 20, 100, 0.25, true);
+        FieldStatistics fs = ret.getCollectionStatistics ("#lengths:part=lengths()");
+        DiskIndex index = new DiskIndex(indexPath);
+        for(int i = 0; i < fs.documentCount; i++) {
+            documentNames.add(index.getName((long) i));
+        }
+        return documentNames;
+    }
+
+
     public static void main(String[] args) throws Exception {
         //write_d_hat();
         //write_q();
@@ -188,8 +197,11 @@ public class Main {
                                            new ArrayList<>(Arrays.asList(Pair.with("requested", 1000),
                                                                          Pair.with("mu", 1000))));
         BatchSearch bs = new BatchSearch();
-        bs.run(queryParams, new PrintStream(resultsPath));
+        bs.retrieve(resultsPath, queryParams, "bm25");
 
+        Word2Vec queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
+        Word2Vec documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
+        WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(documentWordVectors, queryWordVectors, new HashMap<String, List<String>>());
         // generate word-embedding scores
         // linearly combine
         // sort
