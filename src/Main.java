@@ -19,6 +19,7 @@ import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectorsImpl;
 import org.deeplearning4j.models.word2vec.Word2Vec;
+import org.lemurproject.galago.contrib.retrieval.traversal.BM25FTraversal;
 import org.lemurproject.galago.core.eval.Eval;
 import org.lemurproject.galago.core.eval.QuerySetJudgments;
 import org.lemurproject.galago.core.index.disk.DiskIndex;
@@ -41,9 +42,9 @@ import java.util.*;
  */
 public class Main {
     public static final String indexPath = "index";
-    public static final String queryPath = "PsgRobust/robust04.titles.tsv";
+    public static final String queryPath = "PsgRobust/robust04.descs.tsv";
     public static final String queryJudgement = "PsgRobust/PsgRobust.qrels";
-    public static final String wordvecPath = "GoogleNews-vectors-negative300.bin";
+    public static final String wordvecPath = "/Users/brandonmouser/Downloads/GoogleNews-vectors-negative300.bin";
     public static final String queryWordVectorPath = "QUERY_WORDS.txt";
     public static final String dHatVectorPath = "D_HAT.txt";
     public static final String resultsPath = "batchResults";
@@ -186,21 +187,31 @@ public class Main {
     public static void main(String[] args) throws Exception {
         //write_d_hat();
         //write_q();
+        Word2Vec queryWordVectors = null;//WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
+        Word2Vec documentWordVectors = null;//WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
 
         // bm25, Krovetz stemming, Dirchlet smoothing (mu=1000) ---------------------
         Parameters queryParams = setParams(new ArrayList<>(Arrays.asList(Pair.with("queryFormat", "tsv"),
                                                                              Pair.with("query", queryPath),
                                                                              Pair.with("defaultTextPart", "postings.krovetz"),
-                                                                             Pair.with("index", indexPath),
-                                                                             Pair.with("scorer", "bm25"))),
+                                                                             Pair.with("index", indexPath)
+                                                                             //Pair.with("scorer", "bm25")
+                )),
                                            new ArrayList<>(),
                                            new ArrayList<>(Arrays.asList(Pair.with("requested", 1000),
-                                                                         Pair.with("mu", 1000))));
-        BatchSearch bs = new BatchSearch();
-        HashMap<String, HashMap<String, Double>> documentResults = bs.retrieve(resultsPath, queryParams, "bm25");
+                                                                         Pair.with("mu", 1000)
+                                           )));
+        HashMap<String, String> shit = new HashMap<String, String>();
+        List<Parameters> traverseList = new ArrayList<>();
+        Parameters p = Parameters.create();
+        p.set("name", "org.lemurproject.galago.contrib.retrieval.traversal.BM25FTraversal");
+        p.set("order", "before");
+        queryParams.set("traversals", p);
+        BatchSearch bs = new BatchSearch(queryWordVectors, documentWordVectors);
+        HashMap<String, HashMap<String, Double>> documentResults = bs.retrieve(resultsPath, queryParams, "bm");
 
-        Word2Vec queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
-        Word2Vec documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
+        queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
+        documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
         WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(documentWordVectors, queryWordVectors, documentResults);
 
         HashMap<String, HashMap<String, Double>> wordEmbeddingResults = wordEmbeddedScorer.getFinalResults();
@@ -220,7 +231,16 @@ public class Main {
         Parameters resultParams = Eval.singleEvaluation(evalParams, qsj, new ArrayList<>());
 
         Double map_krovDirich = ((Double) (resultParams.getMap("all").get("map")));
-        System.out.println("MAP w/ krovetz stemming and Dirichlet smoothing: " + map_krovDirich.toString());
+        System.out.println("MAP w/ mixed model and Dirichlet smoothing: " + map_krovDirich.toString());
+        Eval eval = new Eval();
+        Parameters parameters = Parameters.create();
+        parameters.set("details", true);
+        parameters.set("metrics", "map");
+        parameters.set("judgments", queryJudgement);
+        parameters.set("runs", "word-embedding-model-bm25f.txt");
+        eval.run(parameters, new PrintStream("map-word-embedding-model-bm25f.txt"));
+
+
     }
 
 }
