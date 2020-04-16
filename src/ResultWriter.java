@@ -10,9 +10,29 @@ public class ResultWriter {
     public ResultWriter (String outputFileName, boolean append) throws UnsupportedEncodingException, FileNotFoundException{
         out = new PrintStream(new BufferedOutputStream(new FileOutputStream(outputFileName, append)), true, "UTF-8");
     }
-    
-    public ResultWriter (){
-        out = System.out;
+
+    public HashMap<String, HashMap<String, Double>> readFile(String filePath) {
+        HashMap<String, HashMap<String, Double>> result = new HashMap<>();
+        try {
+            File file = new File(filePath);
+
+            BufferedReader br = new BufferedReader(new FileReader(file));
+
+            String st;
+            while ((st = br.readLine()) != null) {
+                String[] words = st.split(" ");
+                if (result.containsKey(words[0])) {
+                    result.get(words[0]).put(words[2], Double.parseDouble(words[4]));
+                } else {
+                    HashMap<String, Double> newItem = new HashMap<String, Double>();
+                    newItem.put(words[2], Double.parseDouble(words[4]));
+                    result.put(words[0], newItem);
+                }
+            }
+        } catch (Exception e) {
+            System.out.println(e);
+        }
+        return result;
     }
 
     public void write (String queryNumber, HashMap<String, Double> results) {
@@ -21,7 +41,7 @@ public class ResultWriter {
         if (!results.isEmpty()) {
             for (String doc : document) {
                 if(!Double.isNaN(results.get(doc))) {
-                    out.println(String.format("%s Q0 %s %2d %6f galago", queryNumber, doc, counter, (double)results.get(doc)));
+                    out.println(String.format("%s Q0 %s %d %6f galago", queryNumber, doc, counter, (double)results.get(doc)));
                     counter += 1;
                 }
             }
