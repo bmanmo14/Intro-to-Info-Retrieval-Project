@@ -10,7 +10,7 @@ import java.util.Set;
 public class QueryResultsIO {
 
     private PrintStream writer;
-    private BufferedReader reader;
+    private static BufferedReader reader;
 
     public QueryResultsIO () throws UnsupportedEncodingException, FileNotFoundException {
         writer = null;
@@ -54,7 +54,7 @@ public class QueryResultsIO {
         writer = null;
     }
 
-    public HashMap<String, HashMap<String, Double>> readFile(String inputFileName)  {
+    public static HashMap<String, HashMap<String, Double>> readFile(String inputFileName)  {
         HashMap<String, HashMap<String, Double>> result = new HashMap<>();
         try {
             File file = new File(inputFileName);
@@ -78,7 +78,7 @@ public class QueryResultsIO {
         return result;
     }
 
-    public Parameters createParameter(String queryID, String query, String type) throws IOException {
+    public static Parameters createParameter(String queryID, String query, String type) throws IOException {
         switch (type){
             case "bm25":
                 return Parameters.parseString((String.format("{\"number\":\"%s\", \"text\":\"bm25(%s)\"}", queryID, query)));
@@ -91,7 +91,7 @@ public class QueryResultsIO {
         }
     }
 
-    public List<Parameters> readParameters(String queryPath, String type){
+    public static List<Parameters> readParameters(String queryPath, String type){
         List<Parameters> queries = new ArrayList<Parameters>();
         try {
             File file = new File(queryPath);
@@ -108,5 +108,22 @@ public class QueryResultsIO {
             System.out.println(e);
         }
         return queries;
+    }
+
+    public static HashMap<String, String> createQueryPair(String queryPath) {
+        HashMap<String, String> queriesPair = new HashMap<>();
+        try {
+            File file = new File(queryPath);
+            reader = new BufferedReader(new FileReader(file));
+            String st;
+            while ((st = reader.readLine()) != null) {
+                String[] words = st.split("\t");
+                queriesPair.put(words[0], words[1]);
+            }
+            reader.close();
+        } catch(Exception e){
+            System.out.println(e);
+        }
+        return queriesPair;
     }
 }

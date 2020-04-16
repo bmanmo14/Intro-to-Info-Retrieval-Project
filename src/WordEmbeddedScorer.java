@@ -26,47 +26,25 @@ public class WordEmbeddedScorer extends Thread {
     private static Word2Vec documentVector;
     private static Word2Vec queryVector;
     private HashMap<String, Double> queryDocumentPair = new HashMap<>();
-    private HashMap<String, String> queriesPair = new HashMap<>();
+    private HashMap<String, String> queryPair = new HashMap<>();
     private List<String> queries = new ArrayList<>();
     private List<String> documents = new ArrayList<>();
     private String queryID;
 
-    public WordEmbeddedScorer(Word2Vec dV, Word2Vec qV, List<String> queryDocumentNames) throws UnsupportedEncodingException, FileNotFoundException {
+    public WordEmbeddedScorer(Word2Vec dV, Word2Vec qV, List<String> queryDocumentNames, HashMap<String, String> qPair,  String qID) throws UnsupportedEncodingException, FileNotFoundException {
         if(documentVector == null){
             documentVector = dV;
             queryVector = qV;
         }
-//        for(String queryID : queryDocumentNames.keySet()){
-//            List<String> documentNames = new ArrayList<>(queryDocumentNames.get(queryID).keySet());
-//            documents.put(queryID, documentNames);
-//        }
+        queryPair = qPair;
         documents = queryDocumentNames;
-        readParameters();
-    }
-
-    public void readParameters() {
-        try {
-            File file = new File(queryPath);
-            BufferedReader br = new BufferedReader(new FileReader(file));
-            String st;
-            while ((st = br.readLine()) != null) {
-                String[] words = st.split("\t");
-                queriesPair.put(words[0], words[1]);
-                queries.add(words[0]);
-            }
-        } catch(Exception e){
-            System.out.println(e);
-        }
-    }
-
-    public void startThread(String qID){
         queryID = qID;
         start();
     }
 
     public void run()  {
         HashMap<String, Double> documentScores = new HashMap<>();
-        String[] queryTerms = queriesPair.get(queryID).split(" ");
+        String[] queryTerms = queryPair.get(queryID).split(" ");
         for(String document : documents){
             double[] documentVec = documentVector.getWordVector(document);
             double score = 0.0;
@@ -88,10 +66,6 @@ public class WordEmbeddedScorer extends Thread {
 
     public HashMap<String, Double> getFinalResults(){
         return queryDocumentPair;
-    }
-
-    public List<String> getQueries(){
-        return queries;
     }
 
     public static HashMap<String, Double> sortByValue(HashMap<String, Double> hm)
