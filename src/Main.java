@@ -228,7 +228,6 @@ public class Main {
     private static void evalAndCompare(String ... resultFiles) throws Exception {
         System.out.println("\nORIGNAL, WORD-EMBEDDING, ORIGINAL/WORD-EMBEDDING");
         for (String resultFile: resultFiles) {
-             // evaluate and print results from original model alone
              Parameters evalParams = setParams(new ArrayList<Pair>(Arrays.asList(Pair.with("metrics", "map"),
                                                                                  Pair.with("judgments", queryJudgement),
                                                                                  Pair.with("baseline", resultFile))),
@@ -237,11 +236,15 @@ public class Main {
 
 
             QuerySetJudgments qsj = new QuerySetJudgments(queryJudgement);
-            Parameters resultParams = Eval.singleEvaluation(evalParams, qsj, new ArrayList<String>());
+            Parameters resultParams = Eval.singleEvaluation(evalParams, qsj, new ArrayList<>());
 
             Double map = ((Double) (resultParams.getMap("all").get("map")));
             System.out.println(String.format("MAP = %s, NDCG@10 = %s ", map.toString(), "X"));
         }
+    }
+
+    private static void waitOn(WordEmbeddedScorer t1, OtherModelScorer t2) {
+        while(t1.isAlive() || t2.isAlive());
     }
 
 
@@ -259,33 +262,39 @@ public class Main {
         Parameters queryParams = setParams(new ArrayList<Pair>(Arrays.asList(Pair.with("queryFormat", "tsv"),
                                                                              Pair.with("query", queryPath),
                                                                              Pair.with("defaultTextPart", "postings.krovetz"),
-                                                                             Pair.with("index", indexPath)
-                                                                             //Pair.with("scorer", "bm25")
-                )),
-                                           new ArrayList<>(),
-                                           new ArrayList<>(Arrays.asList(Pair.with("requested", 1000),
-                                                                         Pair.with("mu", 1000)
-                                           )));
-        HashMap<String, String> shit = new HashMap<String, String>();
-        List<Parameters> traverseList = new ArrayList<>();
-        Parameters p = Parameters.create();
-        p.set("name", "org.lemurproject.galago.contrib.retrieval.traversal.BM25FTraversal");
-        p.set("order", "before");
-        queryParams.set("traversals", p);
-        BatchSearch bs = new BatchSearch(queryWordVectors, documentWordVectors);
-        HashMap<String, HashMap<String, Double>> documentResults = bs.retrieve(resultsPath, queryParams, "bm");
+                                                                             Pair.with("index", indexPath),
+                                                                             Pair.with("scorer", otherModel))),
+                                           new ArrayList<Pair>(),
+                                           new ArrayList<Pair>(Arrays.asList(Pair.with("requested", 1000),
+                                                                             Pair.with("mu", 1000)
+//                                                                             Pair.with("lambda", 1)
+                                                                             )));
+        List<Parameters> queries = new BatchSearch().readParameters(queryPath);
 
         queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
         documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
-        WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(documentWordVectors, queryWordVectors, documentResults);
+
+        for (Parameters q :  queries) {
+            OtherModelScorer otherModelScorer = new OtherModelScorer(queryParams, q.getAsString("text"));
+            WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(documentWordVectors,
+                                                                           queryWordVectors,
+                                                                           getAllDocumentNames(),
+                                                                           q.getAsString("number"));
+            waitOn(otherModelScorer, wordEmbeddedScorer);
+        }
+//        HashMap<String, HashMap<String, Double>> otherModelResults = bs.retrieve(resultsPath, queryParams, otherModel);
+
+//        queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
+//        documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
+//        WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(documentWordVectors, queryWordVectors, getAllDocumentNames());
 
 //        HashMap<String, HashMap<String, Double>> wordEmbeddingResults = new QueryResultsIO().readFile(altResultsPath);
 
-        HashMap<String, HashMap<String, Double>> wordEmbeddingResults = wordEmbeddedScorer.getFinalResults();
-        writeResults(wordEmbeddingResults, WEResultsPath);
-        normalize(documentResults, wordEmbeddingResults);
-        HashMap<String, HashMap<String, Double>> combined = combine(documentResults, wordEmbeddingResults, alpha);
-        writeResults(combined, combinedResultsPath);
-        evalAndCompare(resultsPath, WEResultsPath, combinedResultsPath);
+        HashMap<String, Double> wordEmbeddingResults = wordEmbeddedScorer.getFinalResults();
+//        writeResults(wordEmbeddingResults, WEResultsPath);
+//        normalize(documentResults, wordEmbeddingResults);
+//        HashMap<String, HashMap<String, Double>> combined = combine(documentResults, wordEmbeddingResults, alpha);
+//        writeResults(combined, combinedResultsPath);
+//        evalAndCompare(resultsPath, WEResultsPath, combinedResultsPath);
     }
 }
