@@ -49,8 +49,9 @@ public class WordEmbeddedScorer extends Thread {
     }
 
     public void run()  {
-//        HashMap<String, Double> documentScores = new HashMap<>();
+
         String[] queryTerms = queryPair.get(queryID).split(" ");
+
         for(String document : documents){
             double[] documentVec = documentVector.getWordVector(document);
             double score = 0.0;
@@ -69,7 +70,4 @@ public class WordEmbeddedScorer extends Thread {
                 this.queryDocumentPair.put(document, score);
         }
     }
-
-
-
 }

@@ -14,14 +14,10 @@
  * SPDX-License-Identifier: Apache-2.0
  ******************************************************************************/
 import edu.stanford.nlp.math.ArrayMath;
-import org.apache.lucene.util.MathUtil;
-import org.deeplearning4j.models.embeddings.WeightLookupTable;
 import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
-import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
-import org.deeplearning4j.models.embeddings.wordvectors.WordVectorsImpl;
 import org.deeplearning4j.models.word2vec.Word2Vec;
-//import org.lemurproject.galago.contrib.retrieval.traversal.BM25FTraversal;
 import org.lemurproject.galago.core.eval.Eval;
+import java.lang.Math;
 import org.lemurproject.galago.core.eval.QuerySetJudgments;
 import org.lemurproject.galago.core.index.disk.DiskIndex;
 import org.lemurproject.galago.core.index.stats.FieldStatistics;
@@ -29,17 +25,19 @@ import org.lemurproject.galago.core.parse.Document;
 import org.lemurproject.galago.core.parse.stem.KrovetzStemmer;
 import org.lemurproject.galago.core.retrieval.Retrieval;
 import org.lemurproject.galago.core.retrieval.RetrievalFactory;
-import org.lemurproject.galago.utility.MathUtils;
+import org.lemurproject.galago.core.retrieval.ScoredDocument;
+import org.lemurproject.galago.core.retrieval.query.Node;
+import org.lemurproject.galago.core.retrieval.query.StructuredQuery;
 import org.lemurproject.galago.utility.Parameters;
-import org.nd4j.linalg.api.ndarray.INDArray;
 import org.javatuples.Pair;
 
-import java.io.*;
-import java.lang.reflect.Parameter;
+import java.io.*;;
+
 import java.util.*;
 
 /**
- * @author raver119@gmail.com
+ * Kyle Price
+ * Brandon Mouser
  */
 public class Main {
     public static final String indexPath = "index";
@@ -187,52 +185,13 @@ public class Main {
         return documentNames;
     }
 
-    private static void normalize(HashMap<String, HashMap<String, Double>> ...maps){
-        for (HashMap<String, HashMap<String, Double>> queryMap : maps) {
-            for (HashMap<String, Double> docMap : queryMap.values()) {
-                double sum = 0;
-                for (Double score : docMap.values())
-                    sum += score;
-                for (Map.Entry<String, Double> pair : docMap.entrySet())
-                    docMap.put(pair.getKey(), pair.getValue() / sum);
-            }
-        }
-    }
-
-     private static HashMap<String, HashMap<String, Double>> combine(HashMap<String, HashMap<String, Double>> map1,
-                                                                     HashMap<String, HashMap<String, Double>> map2,
-                                                                     double alpha) {
-        HashMap<String, HashMap<String, Double>> combinedMap = new HashMap<String, HashMap<String, Double>>();
-        for (Map.Entry<String, HashMap<String, Double>> queryPair : map1.entrySet()) {
-            String queryKey = queryPair.getKey();
-            combinedMap.put(queryKey, new  HashMap<String, Double>());
-            for (String docKey : queryPair.getValue().keySet()) {
-                 double combinedVal = (1 / alpha) * map1.get(queryKey).get(docKey) + alpha * map2.get(queryKey).get(docKey);
-                 combinedMap.get(queryKey).put(docKey, combinedVal);
-            }
-        }
-        return combinedMap;
-    }
-
-    private static void writeResults(HashMap<String, HashMap<String, Double>> scoreMap, String path) throws Exception {
-        QueryResultsIO resultWriter = new QueryResultsIO();
-        resultWriter.newWriter(path);
-        for (Map.Entry<String, HashMap<String, Double>> queryPair : scoreMap.entrySet()) {
-            String queryKey = queryPair.getKey();
-            HashMap<String, Double> sortedDocs = QueryResultsIO.sortByValue(queryPair.getValue());
-            resultWriter.writeLine(queryKey, sortedDocs);
-        }
-        resultWriter.closeWriter();
-    }
-
     private static void evalAndCompare(String ... resultFiles) throws Exception {
-        System.out.println("\nORIGNAL, WORD-EMBEDDING, ORIGINAL/WORD-EMBEDDING");
         for (String resultFile: resultFiles) {
-             Parameters evalParams = setParams(new ArrayList<Pair>(Arrays.asList(Pair.with("metrics", "map"),
+             Parameters evalParams = setParams(new ArrayList<>(Arrays.asList(Pair.with("metrics", "map"),
                                                                                  Pair.with("judgments", queryJudgement),
                                                                                  Pair.with("baseline", resultFile))),
-                                               new ArrayList<Pair>(Arrays.asList(Pair.with("details", true))),
-                                               new ArrayList<Pair>());
+                                               new ArrayList<>(Arrays.asList(Pair.with("details", true))),
+                                               new ArrayList<>());
 
 
             QuerySetJudgments qsj = new QuerySetJudgments(queryJudgement);
@@ -243,11 +202,32 @@ public class Main {
         }
     }
 
-    private static void waitOn(Thread t1, Thread t2/*, Thread t3*/) {
-        /*if (t3 == null)
-            while(t1.isAlive() || t2.isAlive());
-        else */
-            while(t1.isAlive() || t2.isAlive() /*|| t3.isAlive()*/);
+    private static void waitOn(Thread ... threads) {
+        try {
+            for (Thread t : threads)
+                t.join();
+        }
+        catch(java.lang.InterruptedException e) {
+            System.out.println("an error occured while joining threads");
+        }
+    }
+
+    public static HashMap<String, Double> execQuery(Parameters query, Retrieval ret) {
+        HashMap<String, Double> resultDocuments = new HashMap<>();
+        try {
+            String queryNumber = query.getString("number");
+            String queryText = query.getString("text");
+            Node root = StructuredQuery.parse(queryText);
+            Node transformed = ret.transformQuery(root, query);
+
+            // run query
+            List<ScoredDocument> results = ret.executeQuery(transformed, query).scoredDocuments;
+            QueryResultsIO.resultDocuments(queryNumber, results, resultDocuments);
+
+        } catch (java.lang.Exception e) {
+            System.out.println("Error in OtherModelScorer Thread!!!");
+        }
+        return resultDocuments;
     }
 
 
@@ -256,13 +236,10 @@ public class Main {
         //write_d_hat();
         //write_q();
 
-        Word2Vec queryWordVectors = null;//WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
-        Word2Vec documentWordVectors = null;//WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
         double alpha = 0.5;
         String otherModel = "bm25";
 //        String otherModel = "jm";
 
-        // bm25, Krovetz stemming, Dirchlet smoothing (mu=1000) ---------------------
         List<String> documents = getAllDocumentNames();
         Parameters queryParams = setParams(new ArrayList<Pair>(Arrays.asList(Pair.with("queryFormat", "tsv"),
                                                                              Pair.with("query", queryPath),
@@ -274,45 +251,93 @@ public class Main {
                                                                              Pair.with("mu", 1000)
 //                                                                             Pair.with("lambda", 1)
                                                                              )));
-        List<Parameters> queries = QueryResultsIO.readParameters(queryPath, otherModel);
 
-        queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
-        documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
+        Word2Vec queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
+        Word2Vec documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
+
+        List<Parameters> queries = QueryResultsIO.readParameters(queryPath, otherModel);
         Retrieval ret = RetrievalFactory.create(queryParams);
         QueryResultsIO writer = new QueryResultsIO();
         writer.newWriter(combinedResultsPath);
         System.out.println("Done reading vector files");
 
-        ModelMixer mixer = null;
-        for (Parameters q :  queries) {
-            HashMap<String, Double> otherResults = new HashMap<>();
-            HashMap<String, Double> embeddedResults = new HashMap<>();
-            q.set("requested", documents.size());
-            OtherModelScorer otherModelScorer = new OtherModelScorer(otherResults, ret, q, queryParams);
-            WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(embeddedResults,
+        Iterator it = queries.iterator();
+        while (it.hasNext()) {
+            // time it
+            long start = System.nanoTime();
+
+            Parameters q1 = (Parameters)it.next();
+            HashMap<String, Double> embeddedResults1 = new HashMap<>();
+            HashMap<String, Double> embeddedResults2 = new HashMap<>();
+            HashMap<String, Double> embeddedResults3 = new HashMap<>();
+            HashMap<String, Double> embeddedResults4 = new HashMap<>();
+
+            WordEmbeddedScorer wordEmbeddedScorer1 = new WordEmbeddedScorer(embeddedResults1,
                                                                            documentWordVectors,
                                                                            queryWordVectors,
                                                                            documents,
                                                                            QueryResultsIO.createQueryPair(queryPath),
-                                                                           q.getAsString("number"));
+                                                                           q1.getAsString("number"));
+            if (!it.hasNext()) {
+                waitOn(wordEmbeddedScorer1);
+                ModelMixer.mix( execQuery(q1, ret), embeddedResults1, writer, q1.getAsString("number"), alpha, requested);
+                break;
+            }
+            Parameters q2 = (Parameters)it.next();
+            WordEmbeddedScorer wordEmbeddedScorer2 = new WordEmbeddedScorer(embeddedResults2,
+                                                                           documentWordVectors,
+                                                                           queryWordVectors,
+                                                                           documents,
+                                                                           QueryResultsIO.createQueryPair(queryPath),
+                                                                           q2.getAsString("number"));
+            if (!it.hasNext()) {
+                waitOn(wordEmbeddedScorer1, wordEmbeddedScorer2);
+                ModelMixer.mix( execQuery(q1, ret), embeddedResults1, writer, q1.getAsString("number"), alpha, requested);
+                ModelMixer.mix( execQuery(q2, ret), embeddedResults2, writer, q2.getAsString("number"), alpha, requested);
+                break;
+            }
+            Parameters q3 = (Parameters)it.next();
+            WordEmbeddedScorer wordEmbeddedScorer3 = new WordEmbeddedScorer(embeddedResults3,
+                                                                           documentWordVectors,
+                                                                           queryWordVectors,
+                                                                           documents,
+                                                                           QueryResultsIO.createQueryPair(queryPath),
+                                                                           q3.getAsString("number"));
 
-            waitOn(wordEmbeddedScorer, otherModelScorer/*, mixer*/);
-            mixer = new ModelMixer(otherResults, embeddedResults, writer, q.getAsString("number"), alpha, requested);
-            System.out.print(String.format("\r Processed query %s/700", q.getAsString("number")));
+            if (!it.hasNext()) {
+                waitOn(wordEmbeddedScorer1, wordEmbeddedScorer2, wordEmbeddedScorer3);
+                ModelMixer.mix( execQuery(q1, ret), embeddedResults1, writer, q1.getAsString("number"), alpha, requested);
+                ModelMixer.mix( execQuery(q2, ret), embeddedResults2, writer, q2.getAsString("number"), alpha, requested);
+                ModelMixer.mix( execQuery(q3, ret), embeddedResults3, writer, q3.getAsString("number"), alpha, requested);
+                break;
+            }
+            Parameters q4 = (Parameters)it.next();
+            WordEmbeddedScorer wordEmbeddedScorer4 = new WordEmbeddedScorer(embeddedResults4,
+                                                                            documentWordVectors,
+                                                                            queryWordVectors,
+                                                                            documents,
+                                                                            QueryResultsIO.createQueryPair(queryPath),
+                                                                            q4.getAsString("number"));
+
+            // wait on all
+            waitOn(wordEmbeddedScorer1, wordEmbeddedScorer2, wordEmbeddedScorer3, wordEmbeddedScorer4);
+
+            // linearly combine
+            ModelMixer.mix(execQuery(q1, ret), embeddedResults1, writer, q1.getAsString("number"), alpha, requested);
+            ModelMixer.mix(execQuery(q2, ret), embeddedResults2, writer, q2.getAsString("number"), alpha, requested);
+            ModelMixer.mix(execQuery(q3, ret), embeddedResults3, writer, q3.getAsString("number"), alpha, requested);
+            ModelMixer.mix(execQuery(q4, ret), embeddedResults4, writer, q4.getAsString("number"), alpha, requested);
+
+            long end = System.nanoTime();
+            long duration = (end - start);
+
+            System.out.print(String.format("\rProcessed queries: %s, %s, %s %s in %.0f seconds",
+                                           q1.getAsString("number"),
+                                           q2.getAsString("number"),
+                                           q3.getAsString("number"),
+                                           q4.getAsString("number"),
+                                           duration / Math.pow(10, 9)));
         }
-//        HashMap<String, HashMap<String, Double>> otherModelResults = bs.retrieve(resultsPath, queryParams, otherModel);
-
-//        queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
-//        documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
-//        WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(documentWordVectors, queryWordVectors, getAllDocumentNames());
-
-//        HashMap<String, HashMap<String, Double>> wordEmbeddingResults = new QueryResultsIO().readFile(altResultsPath);
-
-//        HashMap<String, Double> wordEmbeddingResults = wordEmbeddedScorer.getFinalResults();
-//        writeResults(wordEmbeddingResults, WEResultsPath);
-//        normalize(documentResults, wordEmbeddingResults);
-//        HashMap<String, HashMap<String, Double>> combined = combine(documentResults, wordEmbeddingResults, alpha);
-//        writeResults(combined, combinedResultsPath);
-//        evalAndCompare(resultsPath, WEResultsPath, combinedResultsPath);
+        evalAndCompare(combinedResultsPath);
     }
 }
