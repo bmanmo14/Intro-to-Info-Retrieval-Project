@@ -25,17 +25,23 @@ public class WordEmbeddedScorer extends Thread {
 
     private static Word2Vec documentVector;
     private static Word2Vec queryVector;
-    private HashMap<String, Double> queryDocumentPair = new HashMap<>();
+    public HashMap<String, Double> queryDocumentPair;
     private HashMap<String, String> queryPair = new HashMap<>();
     private List<String> queries = new ArrayList<>();
     private List<String> documents = new ArrayList<>();
     private String queryID;
 
-    public WordEmbeddedScorer(Word2Vec dV, Word2Vec qV, List<String> queryDocumentNames, HashMap<String, String> qPair,  String qID) throws UnsupportedEncodingException, FileNotFoundException {
+    public WordEmbeddedScorer(HashMap<String, Double> queryDocumentPair,
+                              Word2Vec dV,
+                              Word2Vec qV,
+                              List<String> queryDocumentNames,
+                              HashMap<String, String> qPair,
+                              String qID) throws UnsupportedEncodingException, FileNotFoundException {
         if(documentVector == null){
             documentVector = dV;
             queryVector = qV;
         }
+        this.queryDocumentPair = queryDocumentPair;
         queryPair = qPair;
         documents = queryDocumentNames;
         queryID = qID;
@@ -43,7 +49,7 @@ public class WordEmbeddedScorer extends Thread {
     }
 
     public void run()  {
-        HashMap<String, Double> documentScores = new HashMap<>();
+//        HashMap<String, Double> documentScores = new HashMap<>();
         String[] queryTerms = queryPair.get(queryID).split(" ");
         for(String document : documents){
             double[] documentVec = documentVector.getWordVector(document);
@@ -59,36 +65,11 @@ public class WordEmbeddedScorer extends Thread {
                 }
             }
             score = score * (1/(double) term_count);
-            documentScores.put(document, score);
+            if(!Double.isNaN(score))
+                this.queryDocumentPair.put(document, score);
         }
-        queryDocumentPair = sortByValue(documentScores);
     }
 
-    public HashMap<String, Double> getFinalResults(){
-        return queryDocumentPair;
-    }
 
-    public static HashMap<String, Double> sortByValue(HashMap<String, Double> hm)
-    {
-        // Create a list from elements of HashMap
-        List<Map.Entry<String, Double> > list =
-                new LinkedList<Map.Entry<String, Double> >(hm.entrySet());
-
-        // Sort the list
-        Collections.sort(list, new Comparator<Map.Entry<String, Double> >() {
-            public int compare(Map.Entry<String, Double> o1,
-                               Map.Entry<String, Double> o2)
-            {
-                return (o2.getValue()).compareTo(o1.getValue());
-            }
-        });
-
-        // put data from sorted list to hashmap
-        HashMap<String, Double> temp = new LinkedHashMap<String, Double>();
-        for (Map.Entry<String, Double> aa : list) {
-            temp.put(aa.getKey(), aa.getValue());
-        }
-        return temp;
-    }
 
 }

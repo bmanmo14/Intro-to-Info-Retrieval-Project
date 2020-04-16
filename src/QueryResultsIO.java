@@ -27,7 +27,7 @@ public class QueryResultsIO {
         while(iter.hasNext() && counter != size){
             String doc = iter.next();
             if(!Double.isNaN(results.get(doc))) {
-                writer.println(String.format("%s Q0 %s %d %6f galago", queryNumber, doc, counter+1, (double)results.get(doc)));
+                writer.println(String.format("%s Q0 %s %d %10f galago", queryNumber, doc, counter+1, (double)results.get(doc)));
                 counter += 1;
             }
         }
@@ -39,7 +39,7 @@ public class QueryResultsIO {
         if (!results.isEmpty()) {
             for (String doc : document) {
                 if(!Double.isNaN(results.get(doc))) {
-                    writer.println(String.format("%s Q0 %s %d %6f galago", queryNumber, doc, counter, (double)results.get(doc)));
+                    writer.println(String.format("%s Q0 %s %d %10f galago", queryNumber, doc, counter, (double)results.get(doc)));
                     counter += 1;
                 }
             }
@@ -57,14 +57,37 @@ public class QueryResultsIO {
         return documentNames;
     }
 
-    public static HashMap<String, Double> resultDocuments(String queryNumber, List<ScoredDocument> results) {
-        HashMap<String, Double> documentNames = new HashMap<>();
+    public static HashMap<String, Double> resultDocuments(String queryNumber, List<ScoredDocument> results, HashMap<String, Double> documentNames) {
+//        HashMap<String, Double> documentNames = new HashMap<>();
         if (!results.isEmpty()) {
             for (ScoredDocument sd : results) {
                 documentNames.put(sd.documentName, sd.score);
             }
         }
         return documentNames;
+    }
+
+    public static HashMap<String, Double> sortByValue(HashMap<String, Double> hm)
+    {
+        // Create a list from elements of HashMap
+        List<Map.Entry<String, Double> > list =
+                new LinkedList<Map.Entry<String, Double> >(hm.entrySet());
+
+        // Sort the list
+        Collections.sort(list, new Comparator<Map.Entry<String, Double> >() {
+            public int compare(Map.Entry<String, Double> o1,
+                               Map.Entry<String, Double> o2)
+            {
+                return (o2.getValue()).compareTo(o1.getValue());
+            }
+        });
+
+        // put data from sorted list to hashmap
+        HashMap<String, Double> temp = new LinkedHashMap<String, Double>();
+        for (Map.Entry<String, Double> aa : list) {
+            temp.put(aa.getKey(), aa.getValue());
+        }
+        return temp;
     }
 
     public void closeWriter(){

@@ -20,7 +20,7 @@ import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectorsImpl;
 import org.deeplearning4j.models.word2vec.Word2Vec;
-import org.lemurproject.galago.contrib.retrieval.traversal.BM25FTraversal;
+//import org.lemurproject.galago.contrib.retrieval.traversal.BM25FTraversal;
 import org.lemurproject.galago.core.eval.Eval;
 import org.lemurproject.galago.core.eval.QuerySetJudgments;
 import org.lemurproject.galago.core.index.disk.DiskIndex;
@@ -219,7 +219,7 @@ public class Main {
         resultWriter.newWriter(path);
         for (Map.Entry<String, HashMap<String, Double>> queryPair : scoreMap.entrySet()) {
             String queryKey = queryPair.getKey();
-            HashMap<String, Double> sortedDocs = WordEmbeddedScorer.sortByValue(queryPair.getValue());
+            HashMap<String, Double> sortedDocs = QueryResultsIO.sortByValue(queryPair.getValue());
             resultWriter.writeLine(queryKey, sortedDocs);
         }
         resultWriter.closeWriter();
@@ -243,9 +243,13 @@ public class Main {
         }
     }
 
-    private static void waitOn(WordEmbeddedScorer t1, OtherModelScorer t2) {
-        while(t1.isAlive() || t2.isAlive());
+    private static void waitOn(Thread t1, Thread t2/*, Thread t3*/) {
+        /*if (t3 == null)
+            while(t1.isAlive() || t2.isAlive());
+        else */
+            while(t1.isAlive() || t2.isAlive() /*|| t3.isAlive()*/);
     }
+
 
 
     public static void main(String[] args) throws Exception {
@@ -254,33 +258,47 @@ public class Main {
 
         Word2Vec queryWordVectors = null;//WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
         Word2Vec documentWordVectors = null;//WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
-        double alpha = 2;
+        double alpha = 0.5;
         String otherModel = "bm25";
 //        String otherModel = "jm";
 
         // bm25, Krovetz stemming, Dirchlet smoothing (mu=1000) ---------------------
+        List<String> documents = getAllDocumentNames();
         Parameters queryParams = setParams(new ArrayList<Pair>(Arrays.asList(Pair.with("queryFormat", "tsv"),
                                                                              Pair.with("query", queryPath),
                                                                              Pair.with("defaultTextPart", "postings.krovetz"),
                                                                              Pair.with("index", indexPath),
                                                                              Pair.with("scorer", otherModel))),
                                            new ArrayList<Pair>(),
-                                           new ArrayList<Pair>(Arrays.asList(Pair.with("requested", 1000),
+                                           new ArrayList<Pair>(Arrays.asList(Pair.with("requested", documents.size()),
                                                                              Pair.with("mu", 1000)
 //                                                                             Pair.with("lambda", 1)
                                                                              )));
-        List<Parameters> queries = new BatchSearch().readParameters(queryPath);
+        List<Parameters> queries = QueryResultsIO.readParameters(queryPath, otherModel);
 
         queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
         documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
+        Retrieval ret = RetrievalFactory.create(queryParams);
+        QueryResultsIO writer = new QueryResultsIO();
+        writer.newWriter(combinedResultsPath);
+        System.out.println("Done reading vector files");
 
+        ModelMixer mixer = null;
         for (Parameters q :  queries) {
-            OtherModelScorer otherModelScorer = new OtherModelScorer(queryParams, q.getAsString("text"));
-            WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(documentWordVectors,
+            HashMap<String, Double> otherResults = new HashMap<>();
+            HashMap<String, Double> embeddedResults = new HashMap<>();
+            q.set("requested", documents.size());
+            OtherModelScorer otherModelScorer = new OtherModelScorer(otherResults, ret, q, queryParams);
+            WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(embeddedResults,
+                                                                           documentWordVectors,
                                                                            queryWordVectors,
-                                                                           getAllDocumentNames(),
+                                                                           documents,
+                                                                           QueryResultsIO.createQueryPair(queryPath),
                                                                            q.getAsString("number"));
-            waitOn(otherModelScorer, wordEmbeddedScorer);
+
+            waitOn(wordEmbeddedScorer, otherModelScorer/*, mixer*/);
+            mixer = new ModelMixer(otherResults, embeddedResults, writer, q.getAsString("number"), alpha, requested);
+            System.out.print(String.format("\r Processed query %s/700", q.getAsString("number")));
         }
 //        HashMap<String, HashMap<String, Double>> otherModelResults = bs.retrieve(resultsPath, queryParams, otherModel);
 
@@ -290,7 +308,7 @@ public class Main {
 
 //        HashMap<String, HashMap<String, Double>> wordEmbeddingResults = new QueryResultsIO().readFile(altResultsPath);
 
-        HashMap<String, Double> wordEmbeddingResults = wordEmbeddedScorer.getFinalResults();
+//        HashMap<String, Double> wordEmbeddingResults = wordEmbeddedScorer.getFinalResults();
 //        writeResults(wordEmbeddingResults, WEResultsPath);
 //        normalize(documentResults, wordEmbeddingResults);
 //        HashMap<String, HashMap<String, Double>> combined = combine(documentResults, wordEmbeddingResults, alpha);
