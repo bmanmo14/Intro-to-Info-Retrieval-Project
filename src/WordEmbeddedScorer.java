@@ -3,12 +3,16 @@ import org.deeplearning4j.models.sequencevectors.interfaces.SequenceIterator;
 import org.deeplearning4j.models.word2vec.VocabWord;
 import org.deeplearning4j.models.word2vec.Word2Vec;
 import org.lemurproject.galago.core.retrieval.Retrieval;
+import org.lemurproject.galago.core.retrieval.RetrievalFactory;
+import org.lemurproject.galago.core.retrieval.query.Node;
+import org.lemurproject.galago.core.retrieval.query.StructuredQuery;
 import org.lemurproject.galago.utility.Parameters;
 
 import java.io.*;
+import java.lang.reflect.Parameter;
 import java.util.*;
 
-public class WordEmbeddedScorer {
+public class WordEmbeddedScorer extends Thread {
 
     public static final String indexPath = "index";
     public static final String queryPath = "PsgRobust/robust04.titles.tsv";
@@ -21,22 +25,23 @@ public class WordEmbeddedScorer {
 
     private static Word2Vec documentVector;
     private static Word2Vec queryVector;
-    private HashMap<String, HashMap<String, Double>> queryDocumentPair = new HashMap<>();
+    private HashMap<String, Double> queryDocumentPair = new HashMap<>();
     private HashMap<String, String> queriesPair = new HashMap<>();
     private List<String> queries = new ArrayList<>();
-    private HashMap<String, List<String>> documents = new HashMap<>();
+    private List<String> documents = new ArrayList<>();
+    private String queryID;
 
-    public WordEmbeddedScorer(Word2Vec dV, Word2Vec qV, HashMap<String, HashMap<String, Double>> queryDocumentNames) throws UnsupportedEncodingException, FileNotFoundException {
+    public WordEmbeddedScorer(Word2Vec dV, Word2Vec qV, List<String> queryDocumentNames) throws UnsupportedEncodingException, FileNotFoundException {
         if(documentVector == null){
             documentVector = dV;
             queryVector = qV;
         }
-        for(String queryID : queryDocumentNames.keySet()){
-            List<String> documentNames = new ArrayList<>(queryDocumentNames.get(queryID).keySet());
-            documents.put(queryID, documentNames);
-        }
+//        for(String queryID : queryDocumentNames.keySet()){
+//            List<String> documentNames = new ArrayList<>(queryDocumentNames.get(queryID).keySet());
+//            documents.put(queryID, documentNames);
+//        }
+        documents = queryDocumentNames;
         readParameters();
-        computeDocumentQueryScores();
     }
 
     public void readParameters() {
@@ -54,38 +59,34 @@ public class WordEmbeddedScorer {
         }
     }
 
-    private void computeDocumentQueryScores() throws UnsupportedEncodingException, FileNotFoundException {
-        // open output file
-        ResultWriter resultWriter = new ResultWriter("test-document-output.txt", false);
-
-        for(int i = 0; i < queries.size(); i ++){
-            HashMap<String, Double> documentScores = new HashMap<>();
-            String queryNumber = queries.get(i);
-            String[] queryTerms = queriesPair.get(queryNumber).split(" ");
-            for(String document : documents.get(queryNumber)){
-                double[] documentVec = documentVector.getWordVector(document);
-                double score = 0.0;
-                int term_count = 0;
-                for(String term : queryTerms){
-                    if(queryVector.hasWord(term)) {
-                        double[] queryTerm = queryVector.getWordVector(term);
-                        double top = ArrayMath.dotProduct(queryTerm, documentVec);
-                        double bottom = ArrayMath.L2Norm(queryTerm) * ArrayMath.L2Norm(documentVec);
-                        score += ((float) top / (float) bottom);
-                        term_count += 1;
-                    }
-                }
-                score = score * (1/(double) term_count);
-                documentScores.put(document, score);
-            }
-            resultWriter.write(queryNumber, sortByValue(documentScores));
-            queryDocumentPair.put(queryNumber, sortByValue(documentScores));
-            System.out.print(String.format("\r Processed all Documents for Query %s/%2d", i, queries.size()));
-        }
-        resultWriter.close();
+    public void startThread(String qID){
+        queryID = qID;
+        start();
     }
 
-    public HashMap<String, HashMap<String, Double>> getFinalResults(){
+    public void run()  {
+        HashMap<String, Double> documentScores = new HashMap<>();
+        String[] queryTerms = queriesPair.get(queryID).split(" ");
+        for(String document : documents){
+            double[] documentVec = documentVector.getWordVector(document);
+            double score = 0.0;
+            int term_count = 0;
+            for(String term : queryTerms){
+                if(queryVector.hasWord(term)) {
+                    double[] queryTerm = queryVector.getWordVector(term);
+                    double top = ArrayMath.dotProduct(queryTerm, documentVec);
+                    double bottom = ArrayMath.L2Norm(queryTerm) * ArrayMath.L2Norm(documentVec);
+                    score += ((float) top / (float) bottom);
+                    term_count += 1;
+                }
+            }
+            score = score * (1/(double) term_count);
+            documentScores.put(document, score);
+        }
+        queryDocumentPair = sortByValue(documentScores);
+    }
+
+    public HashMap<String, Double> getFinalResults(){
         return queryDocumentPair;
     }
 
@@ -93,7 +94,7 @@ public class WordEmbeddedScorer {
         return queries;
     }
 
-    public HashMap<String, Double> sortByValue(HashMap<String, Double> hm)
+    public static HashMap<String, Double> sortByValue(HashMap<String, Double> hm)
     {
         // Create a list from elements of HashMap
         List<Map.Entry<String, Double> > list =
