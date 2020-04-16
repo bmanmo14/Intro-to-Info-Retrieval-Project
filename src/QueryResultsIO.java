@@ -78,6 +78,19 @@ public class QueryResultsIO {
         return result;
     }
 
+    public Parameters createParameter(String queryID, String query, String type) throws IOException {
+        switch (type){
+            case "bm25":
+                return Parameters.parseString((String.format("{\"number\":\"%s\", \"text\":\"bm25(%s)\"}", queryID, query)));
+            case "rm":
+                return Parameters.parseString((String.format("{\"number\":\"%s\", \"text\":\"#rm(%s)\"}", queryID, query)));
+            case "jm":
+                return Parameters.parseString((String.format("{\"number\":\"%s\", \"text\":\"#jm(%s)\"}", queryID, query)));
+            default:
+                return Parameters.parseString((String.format("{\"number\":\"%s\", \"text\":\"%s\"}", queryID, query)));
+        }
+    }
+
     public List<Parameters> readParameters(String queryPath, String type){
         List<Parameters> queries = new ArrayList<Parameters>();
         try {
@@ -88,25 +101,7 @@ public class QueryResultsIO {
             String st;
             while ((st = reader.readLine()) != null) {
                 String[] words = st.split("\t");
-                switch (type){
-                    case "bm25":
-                        String[] c = words[1].split(" ");
-                        StringBuilder combine = new StringBuilder();
-                        for(String w : c){
-                            combine.append("bm25f(").append(w).append(")");
-                        }
-                        queries.add(Parameters.parseString((String.format("{\"number\":\"%s\", \"text\":\"bmf(%s)\"}", words[0], words[1]))));
-                        break;
-                    case "rm":
-                        queries.add(Parameters.parseString((String.format("{\"number\":\"%s\", \"text\":\"#rm(%s)\"}", words[0], words[1]))));
-                        break;
-                    case "jm":
-                        queries.add(Parameters.parseString((String.format("{\"number\":\"%s\", \"text\":\"#jm(%s)\"}", words[0], words[1]))));
-                        break;
-                    default:
-                        queries.add(Parameters.parseString((String.format("{\"number\":\"%s\", \"text\":\"%s\"}", words[0], words[1]))));
-                        break;
-                }
+                queries.add(createParameter(words[0], words[1], type));
             }
             reader.close();
         } catch(Exception e){
