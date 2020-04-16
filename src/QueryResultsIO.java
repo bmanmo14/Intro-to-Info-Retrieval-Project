@@ -47,6 +47,16 @@ public class QueryResultsIO {
         return documentNames;
     }
 
+    public HashMap<String, Double> resultDocuments(String queryNumber, List<ScoredDocument> results) {
+        HashMap<String, Double> documentNames = new HashMap<>();
+        if (!results.isEmpty()) {
+            for (ScoredDocument sd : results) {
+                documentNames.put(sd.documentName, sd.score);
+            }
+        }
+        return documentNames;
+    }
+
     public void closeWriter(){
         if(writer != null){
             writer.close();
