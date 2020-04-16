@@ -14,6 +14,7 @@
  * SPDX-License-Identifier: Apache-2.0
  ******************************************************************************/
 import edu.stanford.nlp.math.ArrayMath;
+import org.apache.lucene.util.MathUtil;
 import org.deeplearning4j.models.embeddings.WeightLookupTable;
 import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
 import org.deeplearning4j.models.embeddings.wordvectors.WordVectors;
@@ -47,6 +48,9 @@ public class Main {
     public static final String queryWordVectorPath = "QUERY_WORDS.txt";
     public static final String dHatVectorPath = "D_HAT.txt";
     public static final String resultsPath = "batchResults";
+    public static final String combinedResultsPath = "combinedResults";
+    public static final String WEResultsPath = "WEResults";
+    public static final String altResultsPath = "altResults";
     public static final int requested = 1000;
 
     public static List<Parameters> readParameters(boolean rm){
@@ -182,45 +186,99 @@ public class Main {
         return documentNames;
     }
 
+    private static void normalize(HashMap<String, HashMap<String, Double>> ...maps){
+        for (HashMap<String, HashMap<String, Double>> queryMap : maps) {
+            for (HashMap<String, Double> docMap : queryMap.values()) {
+                double sum = 0;
+                for (Double score : docMap.values())
+                    sum += score;
+                for (Map.Entry<String, Double> pair : docMap.entrySet())
+                    docMap.put(pair.getKey(), pair.getValue() / sum);
+            }
+        }
+    }
+
+     private static HashMap<String, HashMap<String, Double>> combine(HashMap<String, HashMap<String, Double>> map1,
+                                                                     HashMap<String, HashMap<String, Double>> map2,
+                                                                     double alpha) {
+        HashMap<String, HashMap<String, Double>> combinedMap = new HashMap<String, HashMap<String, Double>>();
+        for (Map.Entry<String, HashMap<String, Double>> queryPair : map1.entrySet()) {
+            String queryKey = queryPair.getKey();
+            combinedMap.put(queryKey, new  HashMap<String, Double>());
+            for (String docKey : queryPair.getValue().keySet()) {
+                 double combinedVal = (1 / alpha) * map1.get(queryKey).get(docKey) + alpha * map2.get(queryKey).get(docKey);
+                 combinedMap.get(queryKey).put(docKey, combinedVal);
+            }
+        }
+        return combinedMap;
+    }
+
+    private static void writeResults(HashMap<String, HashMap<String, Double>> scoreMap, String path) throws Exception {
+        QueryResultsIO resultWriter = new QueryResultsIO();
+        resultWriter.newWriter(path);
+        for (Map.Entry<String, HashMap<String, Double>> queryPair : scoreMap.entrySet()) {
+            String queryKey = queryPair.getKey();
+            HashMap<String, Double> sortedDocs = WordEmbeddedScorer.sortByValue(queryPair.getValue());
+            resultWriter.writeLine(queryKey, sortedDocs);
+        }
+        resultWriter.closeWriter();
+    }
+
+    private static void evalAndCompare(String ... resultFiles) throws Exception {
+        System.out.println("\nORIGNAL, WORD-EMBEDDING, ORIGINAL/WORD-EMBEDDING");
+        for (String resultFile: resultFiles) {
+             // evaluate and print results from original model alone
+             Parameters evalParams = setParams(new ArrayList<Pair>(Arrays.asList(Pair.with("metrics", "map"),
+                                                                                 Pair.with("judgments", queryJudgement),
+                                                                                 Pair.with("baseline", resultFile))),
+                                               new ArrayList<Pair>(Arrays.asList(Pair.with("details", true))),
+                                               new ArrayList<Pair>());
+
+
+            QuerySetJudgments qsj = new QuerySetJudgments(queryJudgement);
+            Parameters resultParams = Eval.singleEvaluation(evalParams, qsj, new ArrayList<String>());
+
+            Double map = ((Double) (resultParams.getMap("all").get("map")));
+            System.out.println(String.format("MAP = %s, NDCG@10 = %s ", map.toString(), "X"));
+        }
+    }
+
 
     public static void main(String[] args) throws Exception {
         //write_d_hat();
         //write_q();
+        double alpha = 2;
+        String otherModel = "bm25";
+//        String otherModel = "jm";
 
         // bm25, Krovetz stemming, Dirchlet smoothing (mu=1000) ---------------------
-        Parameters queryParams = setParams(new ArrayList<>(Arrays.asList(Pair.with("queryFormat", "tsv"),
+        Parameters queryParams = setParams(new ArrayList<Pair>(Arrays.asList(Pair.with("queryFormat", "tsv"),
                                                                              Pair.with("query", queryPath),
                                                                              Pair.with("defaultTextPart", "postings.krovetz"),
                                                                              Pair.with("index", indexPath),
-                                                                             Pair.with("scorer", "bm25"))),
-                                           new ArrayList<>(),
-                                           new ArrayList<>(Arrays.asList(Pair.with("requested", 1000),
-                                                                         Pair.with("mu", 1000))));
+                                                                             Pair.with("scorer", otherModel))),
+                                           new ArrayList<Pair>(),
+                                           new ArrayList<Pair>(Arrays.asList(Pair.with("requested", 1000),
+                                                                             Pair.with("mu", 1000)
+//                                                                             Pair.with("lambda", 1)
+                                                                             )));
         BatchSearch bs = new BatchSearch();
-        HashMap<String, HashMap<String, Double>> documentResults = bs.retrieve(resultsPath, queryParams, "bm25");
+        HashMap<String, HashMap<String, Double>> otherModelResults = bs.retrieve(resultsPath, queryParams, otherModel);
 
         Word2Vec queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
         Word2Vec documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
-        WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(documentWordVectors, queryWordVectors, documentResults);
+        WordEmbeddedScorer wordEmbeddedScorer = new WordEmbeddedScorer(documentWordVectors, queryWordVectors, otherModelResults);
+
+//        HashMap<String, HashMap<String, Double>> wordEmbeddingResults = new QueryResultsIO().readFile(altResultsPath);
+
+
 
         HashMap<String, HashMap<String, Double>> wordEmbeddingResults = wordEmbeddedScorer.getFinalResults();
+        writeResults(wordEmbeddingResults, WEResultsPath);
 
-        // generate word-embedding scores
-        // linearly combine
-        // sort
-        // eval
-
-        Parameters evalParams = setParams(new ArrayList<>(Arrays.asList(Pair.with("metrics", "map"),
-                                                                            Pair.with("judgments", queryJudgement),
-                                                                            Pair.with("baseline", resultsPath))),
-                                          new ArrayList<>(Arrays.asList(Pair.with("details", true))),
-                                          new ArrayList<>());
-
-        QuerySetJudgments qsj = new QuerySetJudgments(queryJudgement);
-        Parameters resultParams = Eval.singleEvaluation(evalParams, qsj, new ArrayList<>());
-
-        Double map_krovDirich = ((Double) (resultParams.getMap("all").get("map")));
-        System.out.println("MAP w/ krovetz stemming and Dirichlet smoothing: " + map_krovDirich.toString());
+        normalize(otherModelResults, wordEmbeddingResults);
+        HashMap<String, HashMap<String, Double>> combined = combine(otherModelResults, wordEmbeddingResults, alpha);
+        writeResults(combined, combinedResultsPath);
+        evalAndCompare(resultsPath, WEResultsPath, combinedResultsPath);
     }
-
 }
