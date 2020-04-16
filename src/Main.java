@@ -227,7 +227,6 @@ public class Main {
     private static void evalAndCompare(String ... resultFiles) throws Exception {
         System.out.println("\nORIGNAL, WORD-EMBEDDING, ORIGINAL/WORD-EMBEDDING");
         for (String resultFile: resultFiles) {
-             // evaluate and print results from original model alone
              Parameters evalParams = setParams(new ArrayList<Pair>(Arrays.asList(Pair.with("metrics", "map"),
                                                                                  Pair.with("judgments", queryJudgement),
                                                                                  Pair.with("baseline", resultFile))),
@@ -236,7 +235,7 @@ public class Main {
 
 
             QuerySetJudgments qsj = new QuerySetJudgments(queryJudgement);
-            Parameters resultParams = Eval.singleEvaluation(evalParams, qsj, new ArrayList<String>());
+            Parameters resultParams = Eval.singleEvaluation(evalParams, qsj, new ArrayList<>());
 
             Double map = ((Double) (resultParams.getMap("all").get("map")));
             System.out.println(String.format("MAP = %s, NDCG@10 = %s ", map.toString(), "X"));
@@ -262,7 +261,10 @@ public class Main {
                                                                              Pair.with("mu", 1000)
 //                                                                             Pair.with("lambda", 1)
                                                                              )));
-        BatchSearch bs = new BatchSearch();
+        List<Parameters> queries = new BatchSearch().readParameters(queryPath);
+        for (Parameters q :  queries) {
+
+        }
         HashMap<String, HashMap<String, Double>> otherModelResults = bs.retrieve(resultsPath, queryParams, otherModel);
 
         Word2Vec queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
