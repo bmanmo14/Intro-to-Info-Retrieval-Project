@@ -46,11 +46,12 @@ public class Main {
     public static final String wordvecPath = "/Users/brandonmouser/Downloads/GoogleNews-vectors-negative300.bin";
     public static final String queryWordVectorPath = "QUERY_WORDS.txt";
     public static final String dHatVectorPath = "D_HAT.txt";
-    public static final String resultsPath = "batchResults";
-    public static final String combinedResultsPath = "combinedResults";
-    public static final String WEResultsPath = "WEResults";
-    public static final String altResultsPath = "altResults";
     public static final int requested = 1000;
+
+    public static final String batchResultsPath = "batchResults";
+    public static final String resultsPathTfIdf = "combinedResultsTfIdf";
+    public static final String resultsPathBm25 = "combinedResultsBm25";
+    public static final String WEResultsPath = "WEResults";
 
     public static List<Parameters> readParameters(boolean rm){
         List<Parameters> queries = new ArrayList<Parameters>();
@@ -187,18 +188,19 @@ public class Main {
 
     private static void evalAndCompare(String ... resultFiles) throws Exception {
         for (String resultFile: resultFiles) {
-             Parameters evalParams = setParams(new ArrayList<>(Arrays.asList(Pair.with("metrics", "map"),
-                                                                                 Pair.with("judgments", queryJudgement),
-                                                                                 Pair.with("baseline", resultFile))),
+             Parameters evalParams = setParams(new ArrayList<>(Arrays.asList(Pair.with("judgments", queryJudgement),
+                                                                             Pair.with("baseline", resultFile))),
                                                new ArrayList<>(Arrays.asList(Pair.with("details", true))),
                                                new ArrayList<>());
+            evalParams.set("metrics", Arrays.asList("ndcg10", "map"));
 
 
             QuerySetJudgments qsj = new QuerySetJudgments(queryJudgement);
             Parameters resultParams = Eval.singleEvaluation(evalParams, qsj, new ArrayList<>());
 
             Double map = ((Double) (resultParams.getMap("all").get("map")));
-            System.out.println(String.format("MAP = %s, NDCG@10 = %s ", map.toString(), "X"));
+            Double ndcg = ((Double) (resultParams.getMap("all").get("ndcg10")));
+            System.out.println(String.format("MAP = %s, NDCG@10 = %s ", map.toString(), ndcg.toString()));
         }
     }
 
@@ -237,8 +239,9 @@ public class Main {
         //write_q();
 
         double alpha = 0.5;
-        String otherModel = "bm25";
-//        String otherModel = "jm";
+        String resultsPath = resultsPathTfIdf;
+//        String otherModel = "bm25";
+        String otherModel = "jm";
 
         List<String> documents = getAllDocumentNames();
         Parameters queryParams = setParams(new ArrayList<Pair>(Arrays.asList(Pair.with("queryFormat", "tsv"),
@@ -248,8 +251,8 @@ public class Main {
                                                                              Pair.with("scorer", otherModel))),
                                            new ArrayList<Pair>(),
                                            new ArrayList<Pair>(Arrays.asList(Pair.with("requested", documents.size()),
-                                                                             Pair.with("mu", 1000)
-//                                                                             Pair.with("lambda", 1)
+                                                                             Pair.with("mu", 1000),
+                                                                             Pair.with("lambda", 1)
                                                                              )));
 
         Word2Vec queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
@@ -258,7 +261,7 @@ public class Main {
         List<Parameters> queries = QueryResultsIO.readParameters(queryPath, otherModel);
         Retrieval ret = RetrievalFactory.create(queryParams);
         QueryResultsIO writer = new QueryResultsIO();
-        writer.newWriter(combinedResultsPath);
+        writer.newWriter(resultsPath);
         System.out.println("Done reading vector files");
 
         Iterator it = queries.iterator();
@@ -338,6 +341,6 @@ public class Main {
                                            q4.getAsString("number"),
                                            duration / Math.pow(10, 9)));
         }
-        evalAndCompare(combinedResultsPath);
+        evalAndCompare(resultsPath);
     }
 }
