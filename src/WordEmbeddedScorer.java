@@ -3,9 +3,13 @@ import org.deeplearning4j.models.sequencevectors.interfaces.SequenceIterator;
 import org.deeplearning4j.models.word2vec.VocabWord;
 import org.deeplearning4j.models.word2vec.Word2Vec;
 import org.lemurproject.galago.core.retrieval.Retrieval;
+import org.lemurproject.galago.core.retrieval.RetrievalFactory;
+import org.lemurproject.galago.core.retrieval.query.Node;
+import org.lemurproject.galago.core.retrieval.query.StructuredQuery;
 import org.lemurproject.galago.utility.Parameters;
 
 import java.io.*;
+import java.lang.reflect.Parameter;
 import java.util.*;
 
 public class WordEmbeddedScorer {
@@ -56,7 +60,8 @@ public class WordEmbeddedScorer {
 
     private void computeDocumentQueryScores() throws UnsupportedEncodingException, FileNotFoundException {
         // open output file
-        ResultWriter resultWriter = new ResultWriter("test-document-output.txt", false);
+        QueryResultsIO resultsIO = new QueryResultsIO();
+        resultsIO.newWriter("word-embedding-model-bm25f.txt");
 
         for(int i = 0; i < queries.size(); i ++){
             HashMap<String, Double> documentScores = new HashMap<>();
@@ -78,11 +83,11 @@ public class WordEmbeddedScorer {
                 score = score * (1/(double) term_count);
                 documentScores.put(document, score);
             }
-            resultWriter.write(queryNumber, sortByValue(documentScores));
+            resultsIO.writeLine(queryNumber, sortByValue(documentScores));
             queryDocumentPair.put(queryNumber, sortByValue(documentScores));
             System.out.print(String.format("\r Processed all Documents for Query %s/%2d", i, queries.size()));
         }
-        resultWriter.close();
+        resultsIO.closeWriter();
     }
 
     public HashMap<String, HashMap<String, Double>> getFinalResults(){
@@ -93,7 +98,7 @@ public class WordEmbeddedScorer {
         return queries;
     }
 
-    public HashMap<String, Double> sortByValue(HashMap<String, Double> hm)
+    public static HashMap<String, Double> sortByValue(HashMap<String, Double> hm)
     {
         // Create a list from elements of HashMap
         List<Map.Entry<String, Double> > list =
