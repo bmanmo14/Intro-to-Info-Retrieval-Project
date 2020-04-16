@@ -2,10 +2,7 @@ import org.lemurproject.galago.core.retrieval.ScoredDocument;
 import org.lemurproject.galago.utility.Parameters;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class QueryResultsIO {
 
@@ -20,6 +17,19 @@ public class QueryResultsIO {
     public void newWriter(String filename) throws FileNotFoundException, UnsupportedEncodingException {
         if(writer == null){
             writer = new PrintStream(new BufferedOutputStream(new FileOutputStream(filename, false)), true, "UTF-8");
+        }
+    }
+
+    public void writeLines(String queryNumber, HashMap<String, Double> results, int size) {
+        Set<String> document = results.keySet();
+        Iterator<String> iter = document.iterator();
+        int counter = 0;
+        while(iter.hasNext() && counter != size){
+            String doc = iter.next();
+            if(!Double.isNaN(results.get(doc))) {
+                writer.println(String.format("%s Q0 %s %d %6f galago", queryNumber, doc, counter+1, (double)results.get(doc)));
+                counter += 1;
+            }
         }
     }
 
