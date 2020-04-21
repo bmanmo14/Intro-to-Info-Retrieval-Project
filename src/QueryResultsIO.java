@@ -27,7 +27,7 @@ public class QueryResultsIO {
         while(iter.hasNext() && counter != size){
             String doc = iter.next();
             if(!Double.isNaN(results.get(doc))) {
-                writer.println(String.format("%s Q0 %s %d %10f galago", queryNumber, doc, counter+1, (double)results.get(doc)));
+                writer.println(String.format("%s Q0 %s %d %.12f galago", queryNumber, doc, counter+1, (double)results.get(doc)));
                 counter += 1;
             }
         }
@@ -39,22 +39,19 @@ public class QueryResultsIO {
         if (!results.isEmpty()) {
             for (String doc : document) {
                 if(!Double.isNaN(results.get(doc))) {
-                    writer.println(String.format("%s Q0 %s %d %10f galago", queryNumber, doc, counter, (double)results.get(doc)));
+                    writer.println(String.format("%s Q0 %s %d %.12f galago", queryNumber, doc, counter, (double)results.get(doc)));
                     counter += 1;
                 }
             }
         }
     }
 
-    public HashMap<String, Double> writeLine(String queryNumber, List<ScoredDocument> results) {
-        HashMap<String, Double> documentNames = new HashMap<>();
+    public void writeLines(String queryNumber, List<ScoredDocument> results) {
         if (!results.isEmpty()) {
             for (ScoredDocument sd : results) {
                 writer.println(sd.toTRECformat(queryNumber));
-                documentNames.put(sd.documentName, sd.score);
             }
         }
-        return documentNames;
     }
 
     public static HashMap<String, Double> resultDocuments(String queryNumber, List<ScoredDocument> results, HashMap<String, Double> documentNames) {

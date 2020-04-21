@@ -14,10 +14,16 @@ public class ModelMixer  {
     private static void normalize(HashMap<String, Double> ...maps){
         for (HashMap<String, Double> docMap : maps) {
             double sum = 0;
+//            for (Map.Entry<String, Double> pair : docMap.entrySet()) {
+//                if(Double.isInfinite(pair.getValue()))
+//                    docMap.put(pair.getKey(), 0d);
+//            }
             for (Double score : docMap.values()) {
+                if(!Double.isNaN(score) && !Double.isInfinite(score))
                     sum += score;
             }
             for (Map.Entry<String, Double> pair : docMap.entrySet())
+                if(!Double.isNaN(pair.getValue()))
                     docMap.put(pair.getKey(), pair.getValue() / sum);
         }
     }
@@ -28,7 +34,7 @@ public class ModelMixer  {
         HashMap<String, Double> combinedMap = new HashMap<>();
         for (Map.Entry<String, Double> docPair : map1.entrySet()) {
              String docKey = docPair.getKey();
-             if (map2.containsKey(docKey)) {
+             if (map2.containsKey(docKey) && !Double.isNaN(docPair.getValue()) && !Double.isNaN(map2.get(docKey))) {
                  double combinedVal = (1 - alpha) * map1.get(docKey) + alpha * map2.get(docKey);
                  combinedMap.put(docKey, combinedVal);
              }

@@ -14,6 +14,7 @@
  * SPDX-License-Identifier: Apache-2.0
  ******************************************************************************/
 import edu.stanford.nlp.math.ArrayMath;
+import org.apache.xalan.lib.sql.QueryParameter;
 import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
 import org.deeplearning4j.models.word2vec.Word2Vec;
 import org.lemurproject.galago.core.eval.Eval;
@@ -29,11 +30,14 @@ import org.lemurproject.galago.core.retrieval.ScoredDocument;
 import org.lemurproject.galago.core.retrieval.query.Node;
 import org.lemurproject.galago.core.retrieval.query.StructuredQuery;
 import org.lemurproject.galago.utility.Parameters;
+//import org.lemurproject.galago.core.tools.apps.BatchSearch;
 import org.javatuples.Pair;
 
 import java.io.*;;
 
 import java.util.*;
+
+import static org.lemurproject.galago.core.tools.apps.BatchSearch.logger;
 
 /**
  * Kyle Price
@@ -41,9 +45,9 @@ import java.util.*;
  */
 public class Main {
     public static final String indexPath = "index";
-    public static final String queryPath = "PsgRobust/robust04.descs.tsv";
-    public static final String queryJudgement = "PsgRobust/PsgRobust.qrels";
-    public static final String wordvecPath = "/Users/brandonmouser/Downloads/GoogleNews-vectors-negative300.bin";
+    public static final String queryPath = "PsgRobust/robust04.titles.tsv";
+    public static final String queryJudgement = "PsgRobust/robust04.qrels";
+    public static final String wordvecPath = "GoogleNews-vectors-negative300.bin";
     public static final String queryWordVectorPath = "QUERY_WORDS.txt";
     public static final String dHatVectorPath = "D_HAT.txt";
     public static final int requested = 1000;
@@ -51,7 +55,15 @@ public class Main {
     public static final String batchResultsPath = "batchResults";
     public static final String resultsPathTfIdf = "combinedResultsTfIdf";
     public static final String resultsPathBm25 = "combinedResultsBm25";
-    public static final String WEResultsPath = "WEResults";
+    public static final String standaloneBm25 = "resultsBm25";
+    public static final String standaloneTfIdf = "resultsTfIfd";
+    public static final String resultsPathWe = "resultsWe";
+
+    public static String resultsPath;
+    public static String standalonePath;
+    public static String scorer;
+    public static String opWrapper;
+
 
     public static List<Parameters> readParameters(boolean rm){
         List<Parameters> queries = new ArrayList<Parameters>();
@@ -181,7 +193,9 @@ public class Main {
         FieldStatistics fs = ret.getCollectionStatistics ("#lengths:part=lengths()");
         DiskIndex index = new DiskIndex(indexPath);
         for(int i = 0; i < fs.documentCount; i++) {
-            documentNames.add(index.getName((long) i));
+            if(index.containsDocumentIdentifier((long) i)) {
+                documentNames.add(index.getName((long) i));
+            }
         }
         return documentNames;
     }
@@ -200,7 +214,7 @@ public class Main {
 
             Double map = ((Double) (resultParams.getMap("all").get("map")));
             Double ndcg = ((Double) (resultParams.getMap("all").get("ndcg10")));
-            System.out.println(String.format("MAP = %s, NDCG@10 = %s ", map.toString(), ndcg.toString()));
+            System.out.println(String.format("%s: MAP = %s, NDCG@10 = %s ", resultFile, map.toString(), ndcg.toString()));
         }
     }
 
@@ -214,13 +228,14 @@ public class Main {
         }
     }
 
-    public static HashMap<String, Double> execQuery(Parameters query, Retrieval ret) {
+    public static HashMap<String, Double> execQuery(Parameters query, Retrieval ret, int numDocs) {
         HashMap<String, Double> resultDocuments = new HashMap<>();
         try {
             String queryNumber = query.getString("number");
             String queryText = query.getString("text");
             Node root = StructuredQuery.parse(queryText);
             Node transformed = ret.transformQuery(root, query);
+            query.set("requested", numDocs);
 
             // run query
             List<ScoredDocument> results = ret.executeQuery(transformed, query).scoredDocuments;
@@ -232,38 +247,105 @@ public class Main {
         return resultDocuments;
     }
 
+    public static void runBatchSearch(String outputFileName, Parameters queryParams, List<Parameters> queries) throws Exception {
+
+        Retrieval retrieval = RetrievalFactory.create(queryParams);
+        QueryResultsIO writer = new QueryResultsIO();
+        writer.newWriter(outputFileName);
+
+        // for each query, run it, get the results, print in TREC format
+        for (Parameters query : queries) {
+            String queryNumber = query.getString("number");
+            String queryText = query.getString("text");
+            queryText = queryText.toLowerCase(); // option to fold query cases -- note that some parameters may require upper case
+
+            query.set("requested", requested);
+
+            Node root = StructuredQuery.parse(queryText);
+            Node transformed = retrieval.transformQuery(root, query);
+
+            // run query
+            List<ScoredDocument> results = retrieval.executeQuery(transformed, query).scoredDocuments;
+            writer.writeLines(queryNumber, results);
+        }
+        writer.closeWriter();
+    }
+
+    public static Parameters chooseModel(String model) throws Exception {
+        List<String> documents = getAllDocumentNames();
+        Parameters queryParams;
+        switch (model) {
+            case "tf_idf":
+                resultsPath = resultsPathTfIdf;
+                standalonePath = standaloneTfIdf;
+                scorer = "jm";
+                opWrapper = "";
+                queryParams =  setParams(new ArrayList<>(Arrays.asList(Pair.with("queryFormat", "tsv"),
+                                                                       Pair.with("query", queryPath),
+                                                                       Pair.with("defaultTextPart", "postings.krovetz"),
+                                                                       Pair.with("index", indexPath),
+                                                                       Pair.with("scorer", scorer))),
+                                         new ArrayList<>(),
+                                         new ArrayList<>(Arrays.asList(Pair.with("requested", documents.size()))));
+                break;
+            case "bm25":
+                resultsPath = resultsPathBm25;
+                standalonePath = standaloneBm25;
+                opWrapper = scorer = "bm25";
+                queryParams = setParams(new ArrayList<>(Arrays.asList(Pair.with("queryFormat", "tsv"),
+                                                                      Pair.with("query", queryPath),
+                                                                      Pair.with("defaultTextPart", "postings.krovetz"),
+                                                                      Pair.with("index", indexPath),
+                                                                      Pair.with("scorer", scorer))),
+                                       new ArrayList<>(),
+                                       new ArrayList<>(Arrays.asList(Pair.with("requested", documents.size()))));
+                break;
+            case "we":
+                resultsPath = resultsPathWe;
+
+                // batch results don't matter cuz we're not using the 'other' model anyway
+                standalonePath = standaloneTfIdf;
+                scorer = "jm";
+                opWrapper = "";
+                queryParams = setParams(new ArrayList<>(Arrays.asList(Pair.with("queryFormat", "tsv"),
+                                                                      Pair.with("query", queryPath),
+                                                                      Pair.with("defaultTextPart", "postings.krovetz"),
+                                                                      Pair.with("index", indexPath),
+                                                                      Pair.with("scorer", scorer))),
+                                       new ArrayList<>(),
+                                       new ArrayList<>(Arrays.asList(Pair.with("requested", documents.size()))));
+                break;
+            default:
+                throw new Exception("invalid model selection");
+        }
+        queryParams.set("requested", documents.size());
+        return queryParams;
+    }
+
 
 
     public static void main(String[] args) throws Exception {
-        //write_d_hat();
-        //write_q();
+//        write_d_hat();
+//        write_q();
 
         double alpha = 0.5;
-        String resultsPath = resultsPathTfIdf;
-//        String otherModel = "bm25";
-        String otherModel = "jm";
+        Parameters queryParams = chooseModel("bm25");
 
-        List<String> documents = getAllDocumentNames();
-        Parameters queryParams = setParams(new ArrayList<Pair>(Arrays.asList(Pair.with("queryFormat", "tsv"),
-                                                                             Pair.with("query", queryPath),
-                                                                             Pair.with("defaultTextPart", "postings.krovetz"),
-                                                                             Pair.with("index", indexPath),
-                                                                             Pair.with("scorer", otherModel))),
-                                           new ArrayList<Pair>(),
-                                           new ArrayList<Pair>(Arrays.asList(Pair.with("requested", documents.size()),
-                                                                             Pair.with("mu", 1000),
-                                                                             Pair.with("lambda", 1)
-                                                                             )));
+        List<Parameters> queries = QueryResultsIO.readParameters(queryPath, opWrapper);
+        runBatchSearch(standalonePath, queryParams, queries);
+//        evalAndCompare(standaloneTfIdf, resultsPathTfIdf, standaloneBm25, resultsPathBm25);
+
+//        System.exit(0);
 
         Word2Vec queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
         Word2Vec documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
+        System.out.println("Done reading vector files");
 
-        List<Parameters> queries = QueryResultsIO.readParameters(queryPath, otherModel);
         Retrieval ret = RetrievalFactory.create(queryParams);
         QueryResultsIO writer = new QueryResultsIO();
         writer.newWriter(resultsPath);
-        System.out.println("Done reading vector files");
 
+        List<String> documents = getAllDocumentNames();
         Iterator it = queries.iterator();
         while (it.hasNext()) {
             // time it
@@ -275,61 +357,69 @@ public class Main {
             HashMap<String, Double> embeddedResults3 = new HashMap<>();
             HashMap<String, Double> embeddedResults4 = new HashMap<>();
 
+            HashMap<String, Double> otherResults1 = execQuery(q1, ret, documents.size());
             WordEmbeddedScorer wordEmbeddedScorer1 = new WordEmbeddedScorer(embeddedResults1,
                                                                            documentWordVectors,
                                                                            queryWordVectors,
                                                                            documents,
                                                                            QueryResultsIO.createQueryPair(queryPath),
-                                                                           q1.getAsString("number"));
+                                                                           q1.getAsString("number"),
+                                                                           otherResults1);
             if (!it.hasNext()) {
                 waitOn(wordEmbeddedScorer1);
-                ModelMixer.mix( execQuery(q1, ret), embeddedResults1, writer, q1.getAsString("number"), alpha, requested);
+                ModelMixer.mix( otherResults1, embeddedResults1, writer, q1.getAsString("number"), alpha, requested);
                 break;
             }
             Parameters q2 = (Parameters)it.next();
+            HashMap<String, Double> otherResults2 = execQuery(q2, ret, documents.size());
             WordEmbeddedScorer wordEmbeddedScorer2 = new WordEmbeddedScorer(embeddedResults2,
                                                                            documentWordVectors,
                                                                            queryWordVectors,
                                                                            documents,
                                                                            QueryResultsIO.createQueryPair(queryPath),
-                                                                           q2.getAsString("number"));
+                                                                           q2.getAsString("number"),
+                                                                           otherResults2);
             if (!it.hasNext()) {
                 waitOn(wordEmbeddedScorer1, wordEmbeddedScorer2);
-                ModelMixer.mix( execQuery(q1, ret), embeddedResults1, writer, q1.getAsString("number"), alpha, requested);
-                ModelMixer.mix( execQuery(q2, ret), embeddedResults2, writer, q2.getAsString("number"), alpha, requested);
+                ModelMixer.mix( otherResults1, embeddedResults1, writer, q1.getAsString("number"), alpha, requested);
+                ModelMixer.mix( otherResults2, embeddedResults2, writer, q2.getAsString("number"), alpha, requested);
                 break;
             }
             Parameters q3 = (Parameters)it.next();
+            HashMap<String, Double> otherResults3 = execQuery(q3, ret, documents.size());
             WordEmbeddedScorer wordEmbeddedScorer3 = new WordEmbeddedScorer(embeddedResults3,
                                                                            documentWordVectors,
                                                                            queryWordVectors,
                                                                            documents,
                                                                            QueryResultsIO.createQueryPair(queryPath),
-                                                                           q3.getAsString("number"));
+                                                                           q3.getAsString("number"),
+                                                                           otherResults3);
 
             if (!it.hasNext()) {
                 waitOn(wordEmbeddedScorer1, wordEmbeddedScorer2, wordEmbeddedScorer3);
-                ModelMixer.mix( execQuery(q1, ret), embeddedResults1, writer, q1.getAsString("number"), alpha, requested);
-                ModelMixer.mix( execQuery(q2, ret), embeddedResults2, writer, q2.getAsString("number"), alpha, requested);
-                ModelMixer.mix( execQuery(q3, ret), embeddedResults3, writer, q3.getAsString("number"), alpha, requested);
+                ModelMixer.mix( otherResults1, embeddedResults1, writer, q1.getAsString("number"), alpha, requested);
+                ModelMixer.mix( otherResults2, embeddedResults2, writer, q2.getAsString("number"), alpha, requested);
+                ModelMixer.mix( otherResults3, embeddedResults3, writer, q3.getAsString("number"), alpha, requested);
                 break;
             }
             Parameters q4 = (Parameters)it.next();
+            HashMap<String, Double> otherResults4 = execQuery(q4, ret, documents.size());
             WordEmbeddedScorer wordEmbeddedScorer4 = new WordEmbeddedScorer(embeddedResults4,
                                                                             documentWordVectors,
                                                                             queryWordVectors,
                                                                             documents,
                                                                             QueryResultsIO.createQueryPair(queryPath),
-                                                                            q4.getAsString("number"));
+                                                                            q4.getAsString("number"),
+                                                                            otherResults4);
 
             // wait on all
             waitOn(wordEmbeddedScorer1, wordEmbeddedScorer2, wordEmbeddedScorer3, wordEmbeddedScorer4);
 
             // linearly combine
-            ModelMixer.mix(execQuery(q1, ret), embeddedResults1, writer, q1.getAsString("number"), alpha, requested);
-            ModelMixer.mix(execQuery(q2, ret), embeddedResults2, writer, q2.getAsString("number"), alpha, requested);
-            ModelMixer.mix(execQuery(q3, ret), embeddedResults3, writer, q3.getAsString("number"), alpha, requested);
-            ModelMixer.mix(execQuery(q4, ret), embeddedResults4, writer, q4.getAsString("number"), alpha, requested);
+            ModelMixer.mix(otherResults1, embeddedResults1, writer, q1.getAsString("number"), alpha, requested);
+            ModelMixer.mix(otherResults2, embeddedResults2, writer, q2.getAsString("number"), alpha, requested);
+            ModelMixer.mix(otherResults3, embeddedResults3, writer, q3.getAsString("number"), alpha, requested);
+            ModelMixer.mix(otherResults4, embeddedResults4, writer, q4.getAsString("number"), alpha, requested);
 
             long end = System.nanoTime();
             long duration = (end - start);
@@ -341,6 +431,7 @@ public class Main {
                                            q4.getAsString("number"),
                                            duration / Math.pow(10, 9)));
         }
-        evalAndCompare(resultsPath);
+        System.out.println();
+        evalAndCompare(standaloneTfIdf, resultsPathTfIdf, standaloneBm25, resultsPathBm25, resultsPathWe);
     }
 }
