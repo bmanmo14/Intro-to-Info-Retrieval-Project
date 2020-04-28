@@ -13,18 +13,15 @@ public class ModelMixer  {
 
     private static void normalize(HashMap<String, Double> ...maps){
         for (HashMap<String, Double> docMap : maps) {
-            double sum = 0;
-//            for (Map.Entry<String, Double> pair : docMap.entrySet()) {
-//                if(Double.isInfinite(pair.getValue()))
-//                    docMap.put(pair.getKey(), 0d);
-//            }
+            double largestVal = Double.NEGATIVE_INFINITY;
             for (Double score : docMap.values()) {
                 if(!Double.isNaN(score) && !Double.isInfinite(score))
-                    sum += score;
+                    if (Math.abs(score) > largestVal)
+                        largestVal = Math.abs(score);
             }
             for (Map.Entry<String, Double> pair : docMap.entrySet())
                 if(!Double.isNaN(pair.getValue()))
-                    docMap.put(pair.getKey(), pair.getValue() / sum);
+                    docMap.put(pair.getKey(), pair.getValue() / largestVal);
         }
     }
 

@@ -14,7 +14,6 @@
  * SPDX-License-Identifier: Apache-2.0
  ******************************************************************************/
 import edu.stanford.nlp.math.ArrayMath;
-import org.apache.xalan.lib.sql.QueryParameter;
 import org.deeplearning4j.models.embeddings.loader.WordVectorSerializer;
 import org.deeplearning4j.models.word2vec.Word2Vec;
 import org.lemurproject.galago.core.eval.Eval;
@@ -30,14 +29,9 @@ import org.lemurproject.galago.core.retrieval.ScoredDocument;
 import org.lemurproject.galago.core.retrieval.query.Node;
 import org.lemurproject.galago.core.retrieval.query.StructuredQuery;
 import org.lemurproject.galago.utility.Parameters;
-//import org.lemurproject.galago.core.tools.apps.BatchSearch;
 import org.javatuples.Pair;
-
-import java.io.*;;
-
+import java.io.*;
 import java.util.*;
-
-import static org.lemurproject.galago.core.tools.apps.BatchSearch.logger;
 
 /**
  * Kyle Price
@@ -85,6 +79,7 @@ public class Main {
         }
         return queries;
     }
+
 
     public static Retrieval createRet(String stemmer, String stemmerClass, String textPart,
                                       String scorer, String model, int docs, int term, double weight, boolean mode){
@@ -322,24 +317,9 @@ public class Main {
         return queryParams;
     }
 
-
-
-    public static void main(String[] args) throws Exception {
-//        write_d_hat();
-//        write_q();
-
-        double alpha = 0.5;
-        Parameters queryParams = chooseModel("bm25");
-
+    public static void runModel(Parameters queryParams, double alpha, Word2Vec documentWordVectors, Word2Vec queryWordVectors) throws Exception {
         List<Parameters> queries = QueryResultsIO.readParameters(queryPath, opWrapper);
         runBatchSearch(standalonePath, queryParams, queries);
-//        evalAndCompare(standaloneTfIdf, resultsPathTfIdf, standaloneBm25, resultsPathBm25);
-
-//        System.exit(0);
-
-        Word2Vec queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
-        Word2Vec documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
-        System.out.println("Done reading vector files");
 
         Retrieval ret = RetrievalFactory.create(queryParams);
         QueryResultsIO writer = new QueryResultsIO();
@@ -433,5 +413,25 @@ public class Main {
         }
         System.out.println();
         evalAndCompare(standaloneTfIdf, resultsPathTfIdf, standaloneBm25, resultsPathBm25, resultsPathWe);
+    }
+
+
+    public static void main(String[] args) throws Exception {
+        write_d_hat();
+        write_q();
+
+        Word2Vec queryWordVectors = WordVectorSerializer.readWord2VecModel(new File(queryWordVectorPath));
+        Word2Vec documentWordVectors = WordVectorSerializer.readWord2VecModel(new File(dHatVectorPath));
+        System.out.println("Done reading vector files");
+
+        for (Double alpha: Arrays.asList(new Double [] {0.3, 0.5, 0.7})) {
+
+            Parameters queryParams = chooseModel("tf_idf");
+            runModel(queryParams, alpha, documentWordVectors, queryWordVectors);
+
+            queryParams = chooseModel("bm25");
+            runModel(queryParams, alpha, documentWordVectors, queryWordVectors);
+        }
+
     }
 }
